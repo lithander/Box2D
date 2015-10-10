@@ -84,6 +84,7 @@ int32 b2DynamicTree::AllocateNode()
 	m_nodes[nodeId].child2 = b2_nullNode;
 	m_nodes[nodeId].height = 0;
 	m_nodes[nodeId].userData = NULL;
+	m_nodes[nodeId].touched = false;
 	++m_nodeCount;
 	return nodeId;
 }
@@ -112,6 +113,7 @@ int32 b2DynamicTree::CreateProxy(const b2AABB& aabb, void* userData)
 	m_nodes[proxyId].aabb.upperBound = aabb.upperBound + r;
 	m_nodes[proxyId].userData = userData;
 	m_nodes[proxyId].height = 0;
+	m_nodes[proxyId].touched = true;
 
 	InsertLeaf(proxyId);
 
@@ -125,6 +127,13 @@ void b2DynamicTree::DestroyProxy(int32 proxyId)
 
 	RemoveLeaf(proxyId);
 	FreeNode(proxyId);
+}
+
+void b2DynamicTree::TouchProxy(int32 proxyId)
+{
+	b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
+	b2Assert(m_nodes[proxyId].IsLeaf());
+	m_nodes[proxyId].touched = true;
 }
 
 bool b2DynamicTree::MoveProxy(int32 proxyId, const b2AABB& aabb, const b2Vec2& displacement)
@@ -168,6 +177,7 @@ bool b2DynamicTree::MoveProxy(int32 proxyId, const b2AABB& aabb, const b2Vec2& d
 	}
 
 	m_nodes[proxyId].aabb = b;
+	m_nodes[proxyId].touched = true;
 
 	InsertLeaf(proxyId);
 	return true;
@@ -264,6 +274,7 @@ void b2DynamicTree::InsertLeaf(int32 leaf)
 	m_nodes[newParent].userData = NULL;
 	m_nodes[newParent].aabb.Combine(leafAABB, m_nodes[sibling].aabb);
 	m_nodes[newParent].height = m_nodes[sibling].height + 1;
+	m_nodes[newParent].touched = true;
 
 	if (oldParent != b2_nullNode)
 	{
@@ -306,6 +317,7 @@ void b2DynamicTree::InsertLeaf(int32 leaf)
 
 		m_nodes[index].height = 1 + b2Max(m_nodes[child1].height, m_nodes[child2].height);
 		m_nodes[index].aabb.Combine(m_nodes[child1].aabb, m_nodes[child2].aabb);
+		m_nodes[index].touched = true;
 
 		index = m_nodes[index].parent;
 	}
@@ -450,6 +462,8 @@ int32 b2DynamicTree::Balance(int32 iA)
 			A->height = 1 + b2Max(B->height, F->height);
 			C->height = 1 + b2Max(A->height, G->height);
 		}
+		A->touched = true;
+		C->touched = true;
 
 		return iC;
 	}
@@ -510,6 +524,8 @@ int32 b2DynamicTree::Balance(int32 iA)
 			A->height = 1 + b2Max(C->height, D->height);
 			B->height = 1 + b2Max(A->height, E->height);
 		}
+		A->touched = true;
+		B->touched = true;
 
 		return iB;
 	}
@@ -776,3 +792,4 @@ void b2DynamicTree::ShiftOrigin(const b2Vec2& newOrigin)
 		m_nodes[i].aabb.upperBound -= newOrigin;
 	}
 }
+

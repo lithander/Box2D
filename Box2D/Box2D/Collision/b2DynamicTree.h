@@ -48,6 +48,8 @@ struct b2TreeNode
 
 	// leaf = 0, free node = -1
 	int32 height;
+
+	bool touched;
 };
 
 /// A dynamic AABB tree broad-phase, inspired by Nathanael Presson's btDbvt.
@@ -73,6 +75,8 @@ public:
 	/// Destroy a proxy. This asserts if the id is invalid.
 	void DestroyProxy(int32 proxyId);
 
+	void TouchProxy(int32 proxyId);
+
 	/// Move a proxy with a swepted AABB. If the proxy has moved outside of its fattened AABB,
 	/// then the proxy is removed from the tree and re-inserted. Otherwise
 	/// the function returns immediately.
@@ -85,6 +89,9 @@ public:
 
 	/// Get the fat AABB for a proxy.
 	const b2AABB& GetFatAABB(int32 proxyId) const;
+		
+	template <typename T>
+	void EnumerateTouchedOverlappingLeafs(T* callback) const;
 
 	/// Query an AABB for overlapping proxies. The callback class
 	/// is called for each proxy that overlaps the supplied AABB.
@@ -163,6 +170,59 @@ inline const b2AABB& b2DynamicTree::GetFatAABB(int32 proxyId) const
 {
 	b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
 	return m_nodes[proxyId].aabb;
+}
+
+template <typename T>
+void b2DynamicTree::EnumerateTouchedOverlappingLeafs(T* callback) const
+{
+	b2GrowableStack<int32, 256> stack;
+	if (m_nodes[m_root].touched)
+		stack.Push(m_root);
+	while (stack.GetCount() > 0) //outer loop iterates over all the leafs (this adds a baseline cost to the broadphase proportional to the number of leafs in the tree)
+	{
+		int32 nodeId = stack.Pop();
+		b2TreeNode* node = m_nodes + nodeId;		
+		if (node->IsLeaf())
+		{
+			//test the node against all other leafs that haven't been visited yet
+			int32 currentId = nodeId;
+			int32 parentId = node->parent;
+			while (parentId != b2_nullNode)
+			{
+				int count = stack.GetCount();
+				if (m_nodes[parentId].child1 == currentId)
+					stack.Push(m_nodes[parentId].child2); //child1 has been visited
+
+				while (stack.GetCount() > count)
+				{
+					int32 otherId = stack.Pop();
+					const b2TreeNode* other = m_nodes + otherId;
+					if ((node->touched || other->touched) && b2TestOverlap(node->aabb, other->aabb))
+					{
+						if (other->IsLeaf())
+						{
+							void* userDataA = m_nodes[b2Min(nodeId, otherId)].userData;
+							void* userDataB = m_nodes[b2Max(nodeId, otherId)].userData;
+							callback->AddPair(userDataA, userDataB);
+						}
+						else
+						{
+							stack.Push(other->child2);
+							stack.Push(other->child1);
+						}
+					}
+				}
+				currentId = parentId;
+				parentId = m_nodes[currentId].parent;
+			}
+		}
+		else
+		{
+			stack.Push(node->child2);
+			stack.Push(node->child1);
+		}
+		node->touched = false;
+	}
 }
 
 template <typename T>

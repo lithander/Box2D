@@ -108,24 +108,9 @@ private:
 
 	friend class b2DynamicTree;
 
-	void BufferMove(int32 proxyId);
-	void UnBufferMove(int32 proxyId);
-
-	bool QueryCallback(int32 proxyId);
-
 	b2DynamicTree m_tree;
 
 	int32 m_proxyCount;
-
-	int32* m_moveBuffer;
-	int32 m_moveCapacity;
-	int32 m_moveCount;
-
-	b2Pair* m_pairBuffer;
-	int32 m_pairCapacity;
-	int32 m_pairCount;
-
-	int32 m_queryProxyId;
 };
 
 /// This is used to sort pairs.
@@ -184,57 +169,7 @@ inline float32 b2BroadPhase::GetTreeQuality() const
 template <typename T>
 void b2BroadPhase::UpdatePairs(T* callback)
 {
-	// Reset pair buffer
-	m_pairCount = 0;
-
-	// Perform tree queries for all moving proxies.
-	for (int32 i = 0; i < m_moveCount; ++i)
-	{
-		m_queryProxyId = m_moveBuffer[i];
-		if (m_queryProxyId == e_nullProxy)
-		{
-			continue;
-		}
-
-		// We have to query the tree with the fat AABB so that
-		// we don't fail to create a pair that may touch later.
-		const b2AABB& fatAABB = m_tree.GetFatAABB(m_queryProxyId);
-
-		// Query tree, create pairs and add them pair buffer.
-		m_tree.Query(this, fatAABB);
-	}
-
-	// Reset move buffer
-	m_moveCount = 0;
-
-	// Sort the pair buffer to expose duplicates.
-	std::sort(m_pairBuffer, m_pairBuffer + m_pairCount, b2PairLessThan);
-
-	// Send the pairs back to the client.
-	int32 i = 0;
-	while (i < m_pairCount)
-	{
-		b2Pair* primaryPair = m_pairBuffer + i;
-		void* userDataA = m_tree.GetUserData(primaryPair->proxyIdA);
-		void* userDataB = m_tree.GetUserData(primaryPair->proxyIdB);
-
-		callback->AddPair(userDataA, userDataB);
-		++i;
-
-		// Skip any duplicate pairs.
-		while (i < m_pairCount)
-		{
-			b2Pair* pair = m_pairBuffer + i;
-			if (pair->proxyIdA != primaryPair->proxyIdA || pair->proxyIdB != primaryPair->proxyIdB)
-			{
-				break;
-			}
-			++i;
-		}
-	}
-
-	// Try to keep the tree balanced.
-	//m_tree.Rebalance(4);
+	m_tree.EnumerateTouchedOverlappingLeafs(callback);
 }
 
 template <typename T>
